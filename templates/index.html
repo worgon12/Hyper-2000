@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>SolarFlow Live Daten by w12</title>
+  <script src="https://cdn.socket.io/3.1.3/socket.io.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <h1>SolarFlow "Hyper 2000" Live Daten by w12</h1>
+  <div id="lastUpdate">Warte auf Daten ...</div>
+  
+  <div id="dataContainer">
+    <!-- Solar Daten -->
+    <div class="data-section half-section" id="solarSection">
+      <h2>Solar Daten</h2>
+      <table id="solarTable">
+        <tbody></tbody>
+      </table>
+    </div>
+    
+    <!-- Akku Daten -->
+    <div class="data-section half-section" id="akkuSection">
+      <h2>Akku Daten</h2>
+      <table id="akkuTable">
+        <tbody></tbody>
+      </table>
+
+
+      <!-- Akkufüllstand -->
+      <div>
+        <strong>Akkufüllstand:</strong>
+        <div class="progress-container">
+          <div class="progress-bar" id="electricLevelBar">0%</div>
+        </div>
+      </div>
+
+      <!-- Akkuleistung und ggf. verbleibende Zeit -->
+      <div id="akkuLeistung">
+        <p id="akkuDisplayedLeistung">Akkustatus: -</p>
+        <!-- Beim Laden wird keine Zeit angezeigt -->
+        <p id="akkuTime"></p>
+      </div>
+
+      <!-- Zellspannungen -->
+      <div id="batteryVoltages">Zellspannungen – Max: 0 V, Min: 0 V</div>
+      <!-- Temperatur -->
+      <div id="batteryTemp">Akku Temperatur: 0°C</div>
+    </div>
+
+    <!-- Systemdaten -->
+    <div class="data-section full-section" id="systemSection">
+      <h2>Systemdaten</h2>
+      <table id="systemTable">
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    var socket = io();
+    var dataGlobal = {};
+
+    // Names für die Tabellen
+    var friendlyNames = {
+      'solarInputPower': 'Solarleistung Gesamt (W)',
+      'solarPower1': 'Solarleistung MPPT 1 (W)',
+      'solarPower2': 'Solarleistung MPPT 2 (W)',
+      'outputHomePower': 'Verbrauch (W)',
+      'gridInputPower': 'Netzeingangsleistung (W)',
+      'acOutputPower': 'AC-Ausgangsleistung (W)',
+      'packState': 'Akkustatus',
+      'packNum': 'Anzahl installierter Akkus',
+      'batterySn': 'Akku Seriennummer',
+      'sn': 'Seriennummer',
+      'hyperTmp': 'Systemtemperatur (°C)',
+      'wifiState': 'WLAN Status',
+      'buzzerSwitch': 'Summer Schalter',
+      'masterSwitch': 'Hauptschalter',
+      'hubState': 'Hub-Zustand',
+      'remainInputTime': 'Verbleibende Eingangszeit (s)',
+      'heatState': 'Heizstatus',
+      'inverseMaxPower': 'Maximale Einspeise Leistung (W)',
+      'inputLimit': 'Eingangsgrenze (W)',
+      'outputLimit': 'Ausgangsgrenze (W)',
+      'acMode': 'AC Modus'
+    };
+
+    // Gruppen für die Tabellenanzeige
+    var groups = {
+      solar: [
+        'solarInputPower',
+        'solarPower1',
+        'solarPower2',
+        'outputHomePower',
+        'gridInputPower',
+      ],
+      akku: [
+        'packState',
+        'packNum',
+        'batterySn'
+      ],
+      system: [
+        'sn',
+        'hyperTmp',
+        'wifiState',
+        'buzzerSwitch',
+        'masterSwitch',
+        'hubState',
+        'remainInputTime',
+        'heatState',
+        'inverseMaxPower',
+        'inputLimit',
+        'outputLimit',
+        'acMode'
+      ]
+    };
+
+    // Aktualisiert die Tabellenanzeige
+    function updateTable(tableId, data, keys) {
+      var tbody = document.querySelector("#" + tableId + " tbody");
+      tbody.innerHTML = "";
+      
+      keys.forEach(function(key) {
+        var row = document.createElement("tr");
+        var cellKey = document.createElement("td");
+        var cellValue = document.createElement("td");
+
+        cellKey.innerText = friendlyNames[key] || key;
+        var value = (data[key] !== undefined) ? data[key] : 0;
+
+        if (key === 'packState') {
+          cellValue.innerText = data['akkustatus'] || "Unbekannt";
+        } else if (key === 'hyperTmp') {
+          var tempC = Math.round(value / 100);
+          cellValue.innerText = tempC + "° Celsius";
+        } else {
+          cellValue.innerText = value;
+        }
+        
+        if (key === 'solarInputPower' || key === 'outputHomePower') {
+          cellValue.style.color = 'green';
+        }
+
+        row.appendChild(cellKey);
+        row.appendChild(cellValue);
+        tbody.appendChild(row);
+      });
+    }
+
+    // Aktualisiert den Akkufüllstandsbalken
+    function updateElectricLevelBar() {
+      var elValue = dataGlobal['electricLevel'];
+      var bar = document.getElementById("electricLevelBar");
+      if (elValue !== undefined) {
+        var percentage = Math.max(0, Math.min(100, parseInt(elValue, 10)));
+        bar.style.width = percentage + "%";
+        bar.innerText = percentage + "%";
+        if (percentage < 25) {
+          bar.style.backgroundColor = 'red';
+          bar.style.color = 'white';
+        } else if (percentage < 75) {
+          bar.style.backgroundColor = 'yellow';
+          bar.style.color = 'black';
+        } else {
+          bar.style.backgroundColor = 'green';
+          bar.style.color = 'white';
+        }
+      } else {
+        bar.style.width = "0%";
+        bar.innerText = "0%";
+        bar.style.backgroundColor = 'gray';
+      }
+    }
+
+    // Aktualisiert den Akkustatus und zeigt:
+    // - Beim Laden: den Akkustatus und die Leistung aus outputPackPower (ohne Zeit)
+    // - Beim Entladen: den Akkustatus, die Leistung aus packInputPower (oder outputHomePower) und die verbleibende Entladezeit
+    function updateAkkuLeistung() {
+      var akkuDisplay = document.getElementById("akkuDisplayedLeistung");
+      var akkuTimeElem = document.getElementById("akkuTime");
+
+      var statusText = dataGlobal['akkustatus'] || "Unbekannt";
+      akkuDisplay.innerText = "Akkustatus: " + statusText;
+      akkuTimeElem.innerText = "";
+
+      if (statusText === "Laden") {
+        var leistung = dataGlobal['outputPackPower'] || 0;
+        akkuDisplay.innerText += " (" + leistung + " W)";
+        // Keine Zeitanzeige beim Laden
+      }
+      else if (statusText === "Entladen") {
+        var leistung = dataGlobal['packInputPower'] || dataGlobal['outputHomePower'] || 0;
+        akkuDisplay.innerText += " (" + leistung + " W)";
+        
+        var timeValue = dataGlobal['remainOutTime'] || 0;
+        var hrs = Math.floor(timeValue / 60);
+        var mins = timeValue % 60;
+        akkuTimeElem.innerText = "Verbleibende Entladezeit: " + hrs + " h " + mins + " min";
+      }
+    }
+
+    // Aktualisiert die Anzeige der Zellspannungen und prüft auf ungültige Werte
+    function updateBatteryVoltages() {
+      let cellData = dataGlobal['cellVoltages'];
+      let maxVol, minVol;
+
+      if (cellData && typeof cellData === 'object') {
+        if (typeof cellData.max === 'number') {
+          maxVol = (cellData.max / 100).toFixed(2);
+        } else {
+          maxVol = 'n/a';
+        }
+        if (typeof cellData.min === 'number') {
+          minVol = (cellData.min / 100).toFixed(2);
+        } else {
+          minVol = 'n/a';
+        }
+      } else {
+        maxVol = minVol = 'n/a';
+      }
+      
+      document.getElementById("batteryVoltages").innerText =
+        "Zellspannungen – Max: " + maxVol + " V, Min: " + minVol + " V";
+    }
+
+    // Aktualisiert die Akku-Temperatur
+    function updateBatteryTemperature() {
+      var batteryTempElem = document.getElementById("batteryTemp");
+      if (dataGlobal['packData'] && dataGlobal['packData'].length > 0) {
+        var newTemp = dataGlobal['packData'][0].maxTemp || 273.15;
+        var celsius = (newTemp - 273.15).toFixed(1);
+        batteryTempElem.innerText = "Akku Temperatur: " + celsius + "°C";
+      } else {
+        batteryTempElem.innerText = "Akku Temperatur: 0°C";
+      }
+    }
+
+    // Socket-Verbindung und Datenupdate
+    socket.on('connect', function() {
+      console.log("Mit SocketIO verbunden");
+    });
+
+    socket.on('mqtt_update', function(data) {
+      console.log("Neue MQTT-Daten:", data);
+      dataGlobal = Object.assign({}, dataGlobal, data);
+
+      // Akku Seriennummer extrahieren, falls vorhanden
+      if (dataGlobal['packData'] && Array.isArray(dataGlobal['packData']) && dataGlobal['packData'].length > 0) {
+        if (dataGlobal['packData'][0]['sn'] !== undefined) {
+          dataGlobal['batterySn'] = dataGlobal['packData'][0]['sn'];
+        }
+        // Extrahiere die Zellspannungswerte aus packData
+        dataGlobal['cellVoltages'] = {
+          max: dataGlobal['packData'][0].maxVol,
+          min: dataGlobal['packData'][0].minVol,
+          total: dataGlobal['packData'][0].totalVol  // Falls totalVol nicht vorhanden ist, wird später 'n/a' angezeigt
+        };
+      }
+
+      // Wenn Akkustatus "Standby" und Verbrauch 0, setze outputHomePower auf 0
+      if (dataGlobal['akkustatus'] === "Standby" && dataGlobal['verbrauch'] === 0) {
+        dataGlobal['outputHomePower'] = 0;
+      }
+      
+      // Wenn im Lademodus und solarInputPower 0, setze verbrauch auf 0
+      if (dataGlobal['akkustatus'] === "Laden" && dataGlobal['solarInputPower'] === 0) {
+        dataGlobal['verbrauch'] = 0;
+      }
+      
+      // Wenn Akku entladen wird, setze gridInputPower auf 0
+      if (dataGlobal['akkustatus'] === "Entladen") {
+        dataGlobal['gridInputPower'] = 0;
+      }
+
+      updateTable("solarTable", dataGlobal, groups.solar);
+      updateTable("akkuTable", dataGlobal, groups.akku);
+      updateTable("systemTable", dataGlobal, groups.system);
+
+      updateElectricLevelBar();
+      updateAkkuLeistung();
+      updateBatteryVoltages();
+      updateBatteryTemperature();
+      
+      document.getElementById("lastUpdate").innerText = "Zuletzt aktualisiert: " + new Date().toLocaleTimeString();
+    });
+
+    // Regelmäßige Abfrage der Daten (alle 3 Sekunden)
+    setInterval(function(){
+      socket.emit('request_update');
+    }, 3000);
+  </script>
+</body>
+</html>
+
+
+
+

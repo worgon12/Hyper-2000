@@ -1,0 +1,102 @@
+/* style.css */
+
+/* Dunkles Theme */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #121212;
+    color: #e0e0e0;
+    margin: 20px;
+  }
+  h1 {
+    text-align: center;
+    color: #ffffff;
+  }
+  #lastUpdate {
+    text-align: center;
+    color: #b0b0b0;
+    margin-bottom: 20px;
+    font-size: 1.1em;
+  }
+  /* Container für die Blöcke */
+  #dataContainer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+  .half-section {
+    width: 48%;
+    margin-bottom: 20px;
+    box-sizing: border-box;
+  }
+  .full-section {
+    width: 100%;
+    margin-bottom: 20px;
+    box-sizing: border-box;
+  }
+  .data-section {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    padding: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  }
+  /* Angepasste Hintergründe */
+  #solarSection,
+  #akkuSection,
+  #systemSection {
+    background: linear-gradient(to right, #2c2c2c, #3a3a3a);
+  }
+  .data-section h2 {
+    background-color: #333;
+    padding: 8px;
+    margin-top: 0;
+    color: #ffffff;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: #2c2c2c;
+  }
+  th, td {
+    padding: 8px;
+    border: 1px solid #444;
+    text-align: left;
+    color: #e0e0e0;
+  }
+  .progress-container {
+    background-color: #444;
+    border-radius: 4px;
+    overflow: hidden;
+    height: 20px;
+    margin-top: 10px;
+  }
+  .progress-bar {
+    height: 100%;
+    text-align: center;
+    line-height: 20px;
+    color: white;
+  }
+  #akkuTable {
+    margin-bottom: 15px; /* Abstand nach unten anpassen */
+  }
+  #akkuLeistung {
+    text-align: center;
+    margin-top: 15px;
+    font-size: 1.2em;
+  }
+  #akkuLeistung p {
+    margin: 5px 0;
+  }
+  /* Container für Akku Zellenspannungen und Temperatur */
+  #batteryVoltages, #batteryTemp {
+    margin-top: 10px;
+    text-align: center;
+    font-size: 1.1em;
+  }
+  @media (max-width: 768px) {
+    #dataContainer {
+      flex-direction: column;
+    }
+    .half-section {
+      width: 100%;
+    }
+  }
